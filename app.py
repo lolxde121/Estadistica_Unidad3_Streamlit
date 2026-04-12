@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotly.graph_objects as go
+import plotly.express as px # para las graficas interactivas 
 from scipy import stats
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
@@ -14,13 +14,13 @@ Esta aplicación permite visualizar distribuciones y realizar pruebas de hipóte
 para una muestra con varianza poblacional conocida.
 """)
 
-# --- SIDEBAR: CONFIGURACIÓN DE DATOS ---
-st.sidebar.header("1. Parámetros de la Muestra")
+# --- 1. CONFIGURACIÓN DE DATOS (SIDEBAR) ---
+st.sidebar.header("Configuración de la Muestra")
 n = st.sidebar.slider("Tamaño de muestra (n)", 30, 500, 100)
-mu_real = st.sidebar.number_input("Media real (para generar datos)", value=100.0)
-sigma_pob = st.sidebar.number_input("Desviación estándar poblacional (σ)", value=15.0)
+mu_real = st.sidebar.number_input("Media real (generación)", value=100.0)
+sigma_pob = st.sidebar.number_input("Desviación estándar (σ)", value=15.0)
 
-# Mantener los datos persistentes con session_state
+# Persistencia de datos
 if 'datos' not in st.session_state:
     st.session_state.datos = np.random.normal(loc=mu_real, scale=sigma_pob, size=n)
 
@@ -29,46 +29,40 @@ if st.sidebar.button("Regenerar Datos"):
 
 df = pd.DataFrame(st.session_state.datos, columns=['Valores'])
 
-# --- MÓDULO 1: VISUALIZACIÓN ---
-st.header("1. Análisis Visual de la Distribución")
+# --- 2. VISUALIZACIÓN INTERACTIVA ---
+st.header("1. Análisis Visual")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("Histograma y KDE")
-    fig1, ax1 = plt.subplots()
-    sns.histplot(df['Valores'], kde=True, ax=ax1, color="skyblue")
-    ax1.set_title("¿Es una distribución normal?")
-    st.pyplot(fig1)
+    fig_hist = px.histogram(df, x="Valores", marginal="box", 
+                            title="Distribución y Boxplot",
+                            color_discrete_sequence=['skyblue'])
+    st.plotly_chart(fig_hist, use_container_width=True)
 
 with col2:
-    st.subheader("Boxplot")
-    fig2, ax2 = plt.subplots()
-    sns.boxplot(x=df['Valores'], ax=ax2, color="lightgreen")
-    ax2.set_title("Identificación de Outliers")
-    st.pyplot(fig2)
+    # Resumen estadístico simple
+    st.subheader("Resumen Descriptivo")
+    st.write(df.describe())
 
-# --- MÓDULO 2: PRUEBA DE HIPÓTESIS Z ---
+# --- 3. PRUEBA DE HIPÓTESIS Z ---
 st.divider()
 st.header("2. Prueba de Hipótesis Z")
 
-col_p1, col_p2 = st.columns(2)
+c_p1, c_p2 = st.columns(2)
 
-with col_p1:
-    st.subheader("Configuración de la Prueba")
+with c_p1:
     h0_val = st.number_input("Hipótesis Nula (H0: μ = )", value=100.0)
     alpha = st.select_slider("Nivel de significancia (α)", options=[0.01, 0.05, 0.10], value=0.05)
 
-with col_p2:
-    st.subheader("Tipo de Prueba")
+with c_p2:
     tipo_test = st.selectbox("Selecciona la Hipótesis Alternativa (H1)", 
                              ["Bilateral (μ ≠ H0)", "Cola Derecha (μ > H0)", "Cola Izquierda (μ < H0)"])
 
-# --- CÁLCULOS MATEMÁTICOS ---
+# --- CÁLCULOS ESTADÍSTICOS CRÍTICOS ---
 media_muestral = df['Valores'].mean()
-# Fórmula Z = (media - H0) / (sigma / sqrt(n))
 z_stat = (media_muestral - h0_val) / (sigma_pob / np.sqrt(n))
 
-# Lógica para P-Value y Valores Críticos
+# Lógica de P-Value y Valores Críticos
 if "Bilateral" in tipo_test:
     p_value = 2 * (1 - stats.norm.cdf(abs(z_stat)))
     z_critico = stats.norm.ppf(1 - alpha/2)
@@ -82,32 +76,43 @@ else: # Izquierda
     z_critico = stats.norm.ppf(alpha)
     rechazar = z_stat < z_critico
 
-# --- RESULTADOS ---
-st.subheader("Resultados del Análisis")
-c1, c2, c3 = st.columns(3)
-c1.metric("Estadístico Z", f"{z_stat:.4f}")
-c2.metric("P-Value", f"{p_value:.4f}")
+# --- MOSTRAR RESULTADOS ---
+res1, res2, res3 = st.columns(3)
+res1.metric("Estadístico Z", f"{z_stat:.4f}")
+res2.metric("P-Value", f"{p_value:.4f}")
 
 if rechazar:
-    c3.error("Resultado: Rechazar H0")
+    res3.error("Resultado: Rechazar H0")
 else:
-    c3.success("Resultado: No Rechazar H0")
+    res3.success("Resultado: No Rechazar H0")
 
-# --- GRÁFICA DE ZONAS DE RECHAZO ---
-st.write("### Gráfica de la Región Crítica")
-fig3, ax3 = plt.subplots(figsize=(10, 4))
-x = np.linspace(-4, 4, 1000)
-y = stats.norm.pdf(x, 0, 1)
-ax3.plot(x, y, color='blue', label='Distribución Z estándar')
+# --- 4. GRÁFICA DE LA CAMPANA INTERACTIVA ---
+st.write("### Visualización de la Región Crítica")
 
-# Sombrear zonas de rechazo
+x_gauss = np.linspace(-4, 4, 500)
+y_gauss = stats.norm.pdf(x_gauss, 0, 1)
+
+fig_z = go.Figure()
+
+# Curva base
+fig_z.add_trace(go.Scatter(x=x_gauss, y=y_gauss, mode='lines', name='Normal Estándar', line=dict(color='blue')))
+
+# Sombreado dinámico de zonas de rechazo
 if "Bilateral" in tipo_test:
-    ax3.fill_between(x, y, where=(x > z_critico) | (x < -z_critico), color='red', alpha=0.3, label='Zona de Rechazo')
+    x_inv = np.linspace(-4, -z_critico, 100)
+    fig_z.add_trace(go.Scatter(x=x_inv, y=stats.norm.pdf(x_inv), fill='tozeroy', name='Z. Rechazo Inf.', fillcolor='rgba(255,0,0,0.3)', line=dict(width=0)))
+    x_sup = np.linspace(z_critico, 4, 100)
+    fig_z.add_trace(go.Scatter(x=x_sup, y=stats.norm.pdf(x_sup), fill='tozeroy', name='Z. Rechazo Sup.', fillcolor='rgba(255,0,0,0.3)', line=dict(width=0)))
 elif "Derecha" in tipo_test:
-    ax3.fill_between(x, y, where=(x > z_critico), color='red', alpha=0.3, label='Zona de Rechazo')
+    x_sup = np.linspace(z_critico, 4, 100)
+    fig_z.add_trace(go.Scatter(x=x_sup, y=stats.norm.pdf(x_sup), fill='tozeroy', name='Zona Rechazo', fillcolor='rgba(255,0,0,0.3)', line=dict(width=0)))
 else:
-    ax3.fill_between(x, y, where=(x < z_critico), color='red', alpha=0.3, label='Zona de Rechazo')
+    x_inv = np.linspace(-4, z_critico, 100)
+    fig_z.add_trace(go.Scatter(x=x_inv, y=stats.norm.pdf(x_inv), fill='tozeroy', name='Zona Rechazo', fillcolor='rgba(255,0,0,0.3)', line=dict(width=0)))
 
-ax3.axvline(z_stat, color='black', linestyle='--', label=f'Z Calculado: {z_stat:.2f}')
-ax3.legend()
-st.pyplot(fig3)
+# Línea del Z calculado
+fig_z.add_vline(x=z_stat, line_width=3, line_dash="dash", line_color="black")
+fig_z.add_annotation(x=z_stat, y=0.1, text=f"Tu Z: {z_stat:.2f}", showarrow=True)
+
+fig_z.update_layout(xaxis_title="Z", yaxis_title="Probabilidad", height=400)
+st.plotly_chart(fig_z, use_container_width=True)
