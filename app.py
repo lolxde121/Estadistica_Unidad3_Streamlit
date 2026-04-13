@@ -4,6 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px # para las graficas interactivas 
 from scipy import stats
+import google.generativeai as genai
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="App Estadística - Edgar Solis", layout="wide")
@@ -116,3 +117,49 @@ fig_z.add_annotation(x=z_stat, y=0.1, text=f"Tu Z: {z_stat:.2f}", showarrow=True
 
 fig_z.update_layout(xaxis_title="Z", yaxis_title="Probabilidad", height=400)
 st.plotly_chart(fig_z, use_container_width=True)
+# --- 5. ASISTENTE DE IA (GEMINI API) ---
+st.divider()
+st.header("3. Asistente IA para Interpretación")
+
+# Espacio para que el usuario ingrese su clave de API
+user_key = st.text_input("Ingresa tu Google Gemini API Key:", type="password")
+
+if st.button("Analizar resultados con IA"):
+    if not user_key:
+        st.error("Por favor, ingresa una API Key válida para continuar.")
+    else:
+        try:
+            # Configuración del modelo
+            genai.configure(api_key=user_key)
+            model = genai.GenerativeModel('gemini-3-flash-preview')
+            # Construcción del prompt siguiendo las instrucciones del profesor
+            # Enviamos el resumen estadístico, NO los datos crudos
+            prompt_estadistico = f"""
+            Se realizó una prueba Z con los siguientes parámetros:
+            - Media muestral: {media_muestral:.4f}
+            - Media hipotética (H0): {h0_val}
+            - Tamaño de muestra (n): {n}
+            - Desviación estándar poblacional (sigma): {sigma_pob}
+            - Alpha (nivel de significancia): {alpha}
+            - Tipo de prueba: {tipo_test}
+            
+            El estadístico Z calculado fue: {z_stat:.4f}
+            El p-value obtenido es: {p_value:.4f}
+
+            ¿Se rechaza H0? Explica la decisión técnica y analiza si los supuestos 
+            de normalidad y varianza conocida son razonables para estos resultados. 
+            Responde de forma concisa y profesional.
+            """
+
+            with st.spinner("El asistente está analizando los datos..."):
+                response = model.generate_content(prompt_estadistico)
+                
+                # Mostrar respuesta de la IA
+                st.subheader("Interpretación del Asistente")
+                st.write(response.text)
+                
+                # Comparación automática requerida
+                st.info(f"**Validación del Sistema:** Nuestra app decidió: '{'Rechazar H0' if rechazar else 'No Rechazar H0'}'.")
+                
+        except Exception as e:
+            st.error(f"Hubo un problema con la API: {e}")
